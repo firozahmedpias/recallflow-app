@@ -1,0 +1,8 @@
+{
+  "name": "RecallFlow",
+  "description": "Mobile-first Study Tracker & Spaced Revision PWA with Pomodoro timer, streak goals, milestone rewards, and exam analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
