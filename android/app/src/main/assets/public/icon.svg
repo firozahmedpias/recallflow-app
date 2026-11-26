@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#0F172A"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" stroke="#334155" stroke-width="4"/>
+  <!-- Spaced repetition arc & recall check -->
+  <path d="M148 268C148 197.308 205.308 140 276 140C325.43 140 368.32 168.02 389.64 209" stroke="#6366F1" stroke-width="28" stroke-linecap="round"/>
+  <path d="M364 268C364 338.692 306.692 396 236 396C186.57 396 143.68 367.98 122.36 327" stroke="#818CF8" stroke-width="28" stroke-linecap="round"/>
+  <path d="M210 264L244 298L318 220" stroke="#F8FAFC" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="389" cy="209" r="14" fill="#F59E0B"/>
+</svg>
