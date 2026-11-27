@@ -6,6 +6,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Search,
   SlidersHorizontal,
 } from 'lucide-react';
 import { useStudy } from '../context/StudyContext';
@@ -16,7 +17,9 @@ import {
   getDueTodayRevisions,
   getOverdueRevisions,
 } from '../utils/revisions';
+import { getTopicRevisionStatus, getTopicStudyStatus } from '../utils/studyStatus';
 import { RevisionItemRow } from '../components/RevisionItemRow';
+import { RevisionStatusBadge, StudyStatusBadge } from '../components/TopicStatusBadges';
 
 function formatMMSS(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -32,8 +35,10 @@ export const TimerScreen: React.FC = () => {
     addSubject,
     openRevisionSession,
     openNewTopicSession,
+    openExistingTopicSession,
     startRevisionTimer,
     startNewTopicSession,
+    startExistingTopicSession,
     pauseTimer,
     resumeTimer,
     resetTimer,
@@ -51,6 +56,10 @@ export const TimerScreen: React.FC = () => {
   const [revisionSubjectId, setRevisionSubjectId] = useState<string>(
     () => timer.subjectId || 'all'
   );
+
+  // Existing topic picker filter/search state
+  const [existingSubjectFilter, setExistingSubjectFilter] = useState<string>('all');
+  const [existingSearch, setExistingSearch] = useState<string>('');
 
   useEffect(() => {
     setRevisionSubjectId(timer.subjectId || 'all');
@@ -111,6 +120,24 @@ export const TimerScreen: React.FC = () => {
     }
     return map;
   }, [state.revisions]);
+
+  const filteredExistingTopics = useMemo(() => {
+    const q = existingSearch.trim().toLowerCase();
+    return state.topics
+      .filter((t) => {
+        if (existingSubjectFilter !== 'all' && t.subjectId !== existingSubjectFilter) {
+          return false;
+        }
+        if (!q) return true;
+        const subjName = subjectMap.get(t.subjectId)?.name.toLowerCase() || '';
+        return (
+          t.name.toLowerCase().includes(q) ||
+          (t.notes || '').toLowerCase().includes(q) ||
+          subjName.includes(q)
+        );
+      })
+      .sort((a, b) => b.studyDate.localeCompare(a.studyDate));
+  }, [state.topics, existingSubjectFilter, existingSearch, subjectMap]);
 
   const isRunning = timer.phase === 'running' || timer.phase === 'break_running';
   const isPaused = timer.phase === 'paused' || timer.phase === 'break_paused';
@@ -184,12 +211,12 @@ export const TimerScreen: React.FC = () => {
       </div>
 
       {/* Mode Switcher (disabled while active session runs so timer isn't accidentally lost) */}
-      <div className="inline-flex p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800/80">
+      <div className="inline-flex flex-wrap p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800/80 gap-1">
         <button
           type="button"
           disabled={isRunning || isPaused}
           onClick={() => openRevisionSession(false)}
-          className={`min-h-[40px] px-4 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60 ${
+          className={`min-h-[40px] px-3.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60 ${
             timer.mode === 'revision'
               ? 'bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
@@ -201,13 +228,25 @@ export const TimerScreen: React.FC = () => {
           type="button"
           disabled={isRunning || isPaused}
           onClick={() => openNewTopicSession()}
-          className={`min-h-[40px] px-4 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60 ${
-            timer.mode === 'new_topic'
+          className={`min-h-[40px] px-3.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60 ${
+            timer.mode === 'new_topic' && !timer.isExistingTopic
               ? 'bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
           }`}
         >
           Study New Topic ({state.settings.newTopicDurationMinutes}m)
+        </button>
+        <button
+          type="button"
+          disabled={isRunning || isPaused}
+          onClick={() => openExistingTopicSession()}
+          className={`min-h-[40px] px-3.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60 ${
+            timer.mode === 'new_topic' && timer.isExistingTopic
+              ? 'bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+          }`}
+        >
+          Study Existing Topic ({state.settings.newTopicDurationMinutes}m)
         </button>
       </div>
 
@@ -252,7 +291,9 @@ export const TimerScreen: React.FC = () => {
                     ? 'Spaced Revision Session'
                     : timer.topicName
                       ? `Studying: ${timer.topicName}`
-                      : 'New Topic Deep Focus'}
+                      : timer.isExistingTopic
+                        ? 'Select a Saved Topic to Study'
+                        : 'New Topic Deep Focus'}
               </p>
 
               {/* Circular Countdown Ring */}
@@ -470,6 +511,136 @@ export const TimerScreen: React.FC = () => {
                       );
                     })}
                   </div>
+                </div>
+              )}
+            </div>
+          ) : timer.isExistingTopic ? (
+            <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-800 space-y-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Study Existing Topic ({state.settings.newTopicDurationMinutes}m)
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Pick any saved topic to start the {state.settings.newTopicDurationMinutes}-minute timer. Sessions log directly without duplicating topics or resetting revisions.
+                  </p>
+                </div>
+
+                {state.topics.length > 0 && (
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="search"
+                        value={existingSearch}
+                        onChange={(e) => setExistingSearch(e.target.value)}
+                        placeholder="Search saved topics..."
+                        className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0B1120] pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                    {state.subjects.length > 0 && (
+                      <select
+                        value={existingSubjectFilter}
+                        onChange={(e) => setExistingSubjectFilter(e.target.value)}
+                        aria-label="Filter existing topics by subject"
+                        className="min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0B1120] px-3 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                      >
+                        <option value="all">All Subjects</option>
+                        {state.subjects.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {filteredExistingTopics.length > 0 ? (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800/80 max-h-[520px] overflow-y-auto">
+                  {filteredExistingTopics.map((topic) => {
+                    const subj = subjectMap.get(topic.subjectId);
+                    const studyStatus = getTopicStudyStatus(topic, state.sessions, todayISO);
+                    const revisionStatus = getTopicRevisionStatus(
+                      topic.id,
+                      state.revisions,
+                      todayISO
+                    );
+                    const isActiveThisTopic =
+                      (isRunning || isPaused) && timer.topicId === topic.id;
+
+                    return (
+                      <div
+                        key={topic.id}
+                        className={`p-4 flex items-center justify-between gap-3 transition-colors ${
+                          isActiveThisTopic ? 'bg-indigo-500/8' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div
+                            className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-xs font-bold text-white mt-0.5"
+                            style={{ backgroundColor: subj?.color || '#6366F1' }}
+                            aria-hidden="true"
+                          >
+                            {(subj?.name || 'S').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                              {topic.name}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums">
+                              {subj?.name || 'General'} · Assigned {formatDisplayDate(topic.studyDate)}
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <StudyStatusBadge status={studyStatus} showDetail />
+                              <RevisionStatusBadge status={revisionStatus} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isRunning || isPaused}
+                          onClick={() => startExistingTopicSession(topic.id)}
+                          className={`min-h-[44px] px-3.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 ${
+                            isActiveThisTopic
+                              ? 'bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                          }`}
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>
+                            {isActiveThisTopic
+                              ? 'Studying'
+                              : `Start ${state.settings.newTopicDurationMinutes}m`}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    {state.topics.length === 0
+                      ? 'No saved topics yet'
+                      : 'No matching topics found'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {state.topics.length === 0
+                      ? 'Add a topic first or switch to Study New Topic.'
+                      : 'Try clearing your search or choosing All Subjects.'}
+                  </p>
+                  {state.topics.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openNewTopicSession()}
+                      className="mt-4 min-h-[42px] px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
+                    >
+                      Switch to Study New Topic
+                    </button>
+                  )}
                 </div>
               )}
             </div>

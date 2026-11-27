@@ -1,9 +1,13 @@
-import { ExamResult, RevisionSchedule, Subject, Topic } from '../types/study';
+import { ExamResult, RevisionSchedule, Session, Subject, Topic } from '../types/study';
+import { getTodayISO } from './dates';
+import { getTopicStudyStatus } from './studyStatus';
 
 export interface TopicExportRow {
   subject: string;
   topic: string;
   studyDate: string;
+  studyStatus: string;
+  studiedDate: string;
   revisionsDone: string;
   nextRevision: string;
   examMark: string;
@@ -20,15 +24,17 @@ export interface SubjectExportSummary {
 
 /**
  * Formats a clean per-topic export row matching the required schema:
- * Subject, Topic, Study Date, Revisions Done, Next Revision, Exam Mark
+ * Subject, Topic, Study Date, Study Status, Studied Date, Revisions Done, Next Revision, Exam Mark
  */
 export function buildTopicExportRows(
   subjects: Subject[],
   topics: Topic[],
   revisions: RevisionSchedule[],
   exams: ExamResult[],
+  sessions: Session[],
   onlySubjectId?: string
 ): { rows: TopicExportRow[]; summaries: SubjectExportSummary[] } {
+  const todayISO = getTodayISO();
   const targetSubjects = onlySubjectId
     ? subjects.filter((s) => s.id === onlySubjectId)
     : subjects;
@@ -78,6 +84,7 @@ export function buildTopicExportRows(
         : null;
 
     for (const topic of subjTopics) {
+      const studyStatus = getTopicStudyStatus(topic, sessions, todayISO);
       const revs = (revisionsByTopic.get(topic.id) || []).sort(
         (a, b) => a.stepDay - b.stepDay
       );
@@ -118,6 +125,8 @@ export function buildTopicExportRows(
         subject: subject.name,
         topic: topic.name,
         studyDate: topic.studyDate,
+        studyStatus: studyStatus.label,
+        studiedDate: studyStatus.studiedDate || '—',
         revisionsDone: `${doneCount}/${revs.length}`,
         nextRevision: nextRevisionText,
         examMark: examMarkText,
@@ -129,6 +138,8 @@ export function buildTopicExportRows(
         subject: subject.name,
         topic: '(No topics logged)',
         studyDate: '—',
+        studyStatus: '—',
+        studiedDate: '—',
         revisionsDone: '0/0',
         nextRevision: '—',
         examMark: avgExamPercent !== null ? `Subj avg ${avgExamPercent}%` : '—',
@@ -184,6 +195,8 @@ export function downloadTopicsCSV(filename: string, rows: TopicExportRow[]): voi
     'Subject',
     'Topic',
     'Study Date',
+    'Study Status',
+    'Studied Date',
     'Revisions Done',
     'Next Revision',
     'Exam Mark',
@@ -196,6 +209,8 @@ export function downloadTopicsCSV(filename: string, rows: TopicExportRow[]): voi
         r.subject,
         r.topic,
         r.studyDate,
+        r.studyStatus,
+        r.studiedDate,
         r.revisionsDone,
         r.nextRevision,
         r.examMark,
@@ -241,12 +256,12 @@ export function downloadTopicsPDF(
   summaries: SubjectExportSummary[],
   rows: TopicExportRow[]
 ): void {
-  // A4 Landscape: 842 x 595 pt for comfortable 6-column table fit
+  // A4 Landscape: 842 x 595 pt for 8-column table fit
   const pageWidth = 842;
   const pageHeight = 595;
-  const marginX = 36;
-  const topY = pageHeight - 40;
-  const bottomY = 38;
+  const marginX = 28;
+  const topY = pageHeight - 36;
+  const bottomY = 36;
 
   const pages: string[][] = [];
   let currentOps: string[] = [];
@@ -261,19 +276,19 @@ export function downloadTopicsPDF(
 
     if (isFirstPage) {
       currentOps.push(
-        `BT /F2 16 Tf ${marginX} ${y} Td (${escapePdfLiteral(sanitizePdfText(reportTitle, 78))}) Tj ET`
+        `BT /F2 15 Tf ${marginX} ${y} Td (${escapePdfLiteral(sanitizePdfText(reportTitle, 80))}) Tj ET`
       );
-      y -= 18;
+      y -= 17;
       const dateStr = `Generated ${new Date().toLocaleDateString()} | ${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`;
       currentOps.push(
         `0.4 0.45 0.52 rg BT /F1 9 Tf ${marginX} ${y} Td (${escapePdfLiteral(sanitizePdfText(dateStr))}) Tj ET 0 0 0 rg`
       );
-      y -= 18;
+      y -= 17;
     } else {
       currentOps.push(
-        `0.4 0.45 0.52 rg BT /F1 9 Tf ${marginX} ${y} Td (${escapePdfLiteral(sanitizePdfText(reportTitle + ' (continued)', 80))}) Tj ET 0 0 0 rg`
+        `0.4 0.45 0.52 rg BT /F1 9 Tf ${marginX} ${y} Td (${escapePdfLiteral(sanitizePdfText(reportTitle + ' (continued)', 82))}) Tj ET 0 0 0 rg`
       );
-      y -= 18;
+      y -= 17;
     }
   };
 
@@ -290,15 +305,17 @@ export function downloadTopicsPDF(
     );
     const cols = [
       { x: marginX + 6, label: 'Subject' },
-      { x: marginX + 136, label: 'Topic' },
-      { x: marginX + 356, label: 'Study Date' },
-      { x: marginX + 444, label: 'Revisions' },
-      { x: marginX + 528, label: 'Next Revision' },
-      { x: marginX + 662, label: 'Exam Mark' },
+      { x: marginX + 100, label: 'Topic' },
+      { x: marginX + 270, label: 'Study Date' },
+      { x: marginX + 342, label: 'Study Status' },
+      { x: marginX + 422, label: 'Studied Date' },
+      { x: marginX + 498, label: 'Revisions' },
+      { x: marginX + 564, label: 'Next Revision' },
+      { x: marginX + 682, label: 'Exam Mark' },
     ];
     for (const c of cols) {
       currentOps.push(
-        `BT /F2 9 Tf ${c.x} ${y - 9} Td (${escapePdfLiteral(c.label)}) Tj ET`
+        `BT /F2 8.5 Tf ${c.x} ${y - 9} Td (${escapePdfLiteral(c.label)}) Tj ET`
       );
     }
     currentOps.push('0 0 0 rg');
@@ -307,7 +324,6 @@ export function downloadTopicsPDF(
 
   startNewPage(true);
 
-  // Subject Summary Section
   if (summaries.length > 0) {
     currentOps.push(
       `BT /F2 11 Tf ${marginX} ${y} Td (Subject Progress Summary) Tj ET`
@@ -320,14 +336,13 @@ export function downloadTopicsPDF(
         s.avgExamPercent !== null ? ` | Avg Exam: ${s.avgExamPercent}%` : '';
       const line = `${s.subjectName}: ${s.totalTopics} topics (${s.topicsCompleted} completed) | Revisions: ${s.revisionsDone} done, ${s.revisionsPending} pending${examPart}`;
       currentOps.push(
-        `0.2 0.24 0.32 rg BT /F1 9 Tf ${marginX + 4} ${y} Td (${escapePdfLiteral(sanitizePdfText(line, 118))}) Tj ET 0 0 0 rg`
+        `0.2 0.24 0.32 rg BT /F1 9 Tf ${marginX + 4} ${y} Td (${escapePdfLiteral(sanitizePdfText(line, 122))}) Tj ET 0 0 0 rg`
       );
       y -= 13;
     }
     y -= 10;
   }
 
-  // Topics Table
   drawTableHeader();
 
   rows.forEach((row, idx) => {
@@ -344,16 +359,18 @@ export function downloadTopicsPDF(
 
     currentOps.push('0.12 0.15 0.22 rg');
     const cells = [
-      { x: marginX + 6, val: sanitizePdfText(row.subject, 22) },
-      { x: marginX + 136, val: sanitizePdfText(row.topic, 38) },
-      { x: marginX + 356, val: sanitizePdfText(row.studyDate, 14) },
-      { x: marginX + 444, val: sanitizePdfText(row.revisionsDone, 12) },
-      { x: marginX + 528, val: sanitizePdfText(row.nextRevision, 24) },
-      { x: marginX + 662, val: sanitizePdfText(row.examMark, 22) },
+      { x: marginX + 6, val: sanitizePdfText(row.subject, 16) },
+      { x: marginX + 100, val: sanitizePdfText(row.topic, 30) },
+      { x: marginX + 270, val: sanitizePdfText(row.studyDate, 12) },
+      { x: marginX + 342, val: sanitizePdfText(row.studyStatus, 13) },
+      { x: marginX + 422, val: sanitizePdfText(row.studiedDate, 12) },
+      { x: marginX + 498, val: sanitizePdfText(row.revisionsDone, 10) },
+      { x: marginX + 564, val: sanitizePdfText(row.nextRevision, 21) },
+      { x: marginX + 682, val: sanitizePdfText(row.examMark, 18) },
     ];
     for (const cell of cells) {
       currentOps.push(
-        `BT /F1 9 Tf ${cell.x} ${y - 7} Td (${escapePdfLiteral(cell.val)}) Tj ET`
+        `BT /F1 8.5 Tf ${cell.x} ${y - 7} Td (${escapePdfLiteral(cell.val)}) Tj ET`
       );
     }
     currentOps.push(
@@ -366,8 +383,6 @@ export function downloadTopicsPDF(
     pages.push(currentOps);
   }
 
-  // Assemble PDF objects:
-  // 1: Catalog, 2: Pages, 3: Helvetica (/F1), 4: Helvetica-Bold (/F2), then per page: (Page obj, Content stream obj)
   const objects: string[] = [];
   objects.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
 

@@ -69,7 +69,7 @@ export const AddTopicScreen: React.FC = () => {
           Log Studied Topic
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Add what you studied today. Revisions are scheduled automatically on Day 1, 4, 7, and 10.
+          Assign a topic to today or a future date in your Study Plan. Revisions are scheduled automatically on Day 1, 4, 7, and 10.
         </p>
       </div>
 

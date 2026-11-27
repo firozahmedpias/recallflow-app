@@ -1,13 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
   Bell,
+  BookOpen,
   BookPlus,
+  CalendarDays,
+  Check,
   CheckCircle2,
   Clock,
   Flame,
   FolderCog,
   Play,
   Plus,
+  RotateCcw,
   Sparkles,
 } from 'lucide-react';
 import { useStudy } from '../context/StudyContext';
@@ -18,6 +22,7 @@ import {
   getUpcomingRevisions,
 } from '../utils/revisions';
 import { formatDisplayDate, formatHeaderDate, getTodayISO } from '../utils/dates';
+import { getTopicRevisionStatus, getTopicStudyStatus } from '../utils/studyStatus';
 import {
   getNotificationPermission,
   isNotificationSupported,
@@ -25,6 +30,7 @@ import {
   sendBrowserNotification,
 } from '../utils/notifications';
 import { RevisionItemRow } from '../components/RevisionItemRow';
+import { RevisionStatusBadge, StudyStatusBadge } from '../components/TopicStatusBadges';
 import { SubjectManager } from '../components/SubjectManager';
 
 export const TodayScreen: React.FC = () => {
@@ -36,8 +42,11 @@ export const TodayScreen: React.FC = () => {
     markRevisionDone,
     undoRevisionDone,
     snoozeRevision,
+    markTopicStudied,
     openRevisionSession,
     openNewTopicSession,
+    openExistingTopicSession,
+    startExistingTopicSession,
     updateSettings,
   } = useStudy();
 
@@ -106,6 +115,31 @@ export const TodayScreen: React.FC = () => {
         (t) => t.studyDate === todayISO && matchesSubject(t.subjectId)
       ),
     [state.topics, todayISO, selectedSubjectId]
+  );
+
+  const todayTopicsWithStatus = useMemo(() => {
+    return state.topics
+      .filter((t) => matchesSubject(t.subjectId))
+      .map((topic) => {
+        const studyStatus = getTopicStudyStatus(topic, state.sessions, todayISO);
+        const revisionStatus = getTopicRevisionStatus(topic.id, state.revisions, todayISO);
+        return { topic, studyStatus, revisionStatus };
+      })
+      .filter(
+        ({ topic, studyStatus }) =>
+          topic.studyDate === todayISO || studyStatus.studiedDate === todayISO
+      )
+      .sort((a, b) => b.topic.createdAt.localeCompare(a.topic.createdAt));
+  }, [state.topics, state.sessions, state.revisions, todayISO, selectedSubjectId]);
+
+  const studiedTodayCount = useMemo(
+    () => todayTopicsWithStatus.filter((item) => item.studyStatus.kind === 'studied').length,
+    [todayTopicsWithStatus]
+  );
+  const notStudiedTodayCount = useMemo(
+    () =>
+      todayTopicsWithStatus.filter((item) => item.studyStatus.kind !== 'studied').length,
+    [todayTopicsWithStatus]
   );
 
   const totalActionable = overdue.length + dueToday.length;
@@ -178,6 +212,15 @@ export const TodayScreen: React.FC = () => {
           >
             <BookPlus className="w-4 h-4" />
             <span>Study New Topic ({state.settings.newTopicDurationMinutes}m)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openExistingTopicSession()}
+            className="min-h-[44px] px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <BookOpen className="w-4 h-4 text-indigo-500" />
+            <span>Study Existing Topic ({state.settings.newTopicDurationMinutes}m)</span>
           </button>
 
           <button
@@ -371,8 +414,117 @@ export const TodayScreen: React.FC = () => {
 
       {/* Main Two-Column Grid on Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Left 2 Columns: Overdue & Due Today Revision Queue */}
+        {/* Left 2 Columns: Today's Topics + Overdue & Due Today Revision Queue */}
         <div className="lg:col-span-2 space-y-5">
+          {/* Today's Topics + Studied / Not Studied Summary */}
+          <section aria-labelledby="today-topics-heading">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                <h2
+                  id="today-topics-heading"
+                  className="text-sm font-bold text-slate-900 dark:text-slate-100"
+                >
+                  Today&apos;s Topics
+                </h2>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
+                  Studied {studiedTodayCount} / Not studied {notStudiedTodayCount} today
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveScreen('study-plan')}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Study Plan</span>
+              </button>
+            </div>
+
+            {todayTopicsWithStatus.length > 0 ? (
+              <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden">
+                {todayTopicsWithStatus.map(({ topic, studyStatus, revisionStatus }) => {
+                  const subj = subjectMap.get(topic.subjectId);
+                  const isStudied = studyStatus.kind === 'studied';
+
+                  return (
+                    <div
+                      key={topic.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <div
+                          className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-xs font-bold text-white mt-0.5"
+                          style={{ backgroundColor: subj?.color || '#6366F1' }}
+                          aria-hidden="true"
+                        >
+                          {(subj?.name || 'S').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                            {topic.name}
+                          </h3>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+                            {subj?.name || 'General'}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <StudyStatusBadge status={studyStatus} showDetail />
+                            <RevisionStatusBadge status={revisionStatus} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => startExistingTopicSession(topic.id)}
+                          className="min-h-[40px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 inline-flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5 text-indigo-500 fill-current" />
+                          <span>{state.settings.newTopicDurationMinutes}m</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => markTopicStudied(topic.id, !isStudied, todayISO)}
+                          className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                            isStudied
+                              ? 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                          }`}
+                        >
+                          {isStudied ? (
+                            <>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Unmark</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Mark Studied</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 px-4 py-4 flex items-center justify-between gap-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No topics assigned to today yet.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveScreen('add-topic')}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  + Add Topic
+                </button>
+              </div>
+            )}
+          </section>
+
           {overdue.length > 0 && (
             <section aria-labelledby="overdue-heading">
               <div className="flex items-center justify-between mb-2.5 px-1">
@@ -384,16 +536,29 @@ export const TodayScreen: React.FC = () => {
                 </h2>
               </div>
               <div className="rounded-2xl bg-white dark:bg-[#111827] border border-amber-500/30 overflow-hidden">
-                {overdue.map((rev) => (
-                  <RevisionItemRow
-                    key={rev.id}
-                    revision={rev}
-                    topic={topicMap.get(rev.topicId)}
-                    subject={subjectMap.get(rev.subjectId)}
-                    onMarkDone={markRevisionDone}
-                    onSnooze={snoozeRevision}
-                  />
-                ))}
+                {overdue.map((rev) => {
+                  const topic = topicMap.get(rev.topicId);
+                  return (
+                    <RevisionItemRow
+                      key={rev.id}
+                      revision={rev}
+                      topic={topic}
+                      subject={subjectMap.get(rev.subjectId)}
+                      studyStatus={
+                        topic
+                          ? getTopicStudyStatus(topic, state.sessions, todayISO)
+                          : undefined
+                      }
+                      revisionStatus={
+                        topic
+                          ? getTopicRevisionStatus(topic.id, state.revisions, todayISO)
+                          : undefined
+                      }
+                      onMarkDone={markRevisionDone}
+                      onSnooze={snoozeRevision}
+                    />
+                  );
+                })}
               </div>
             </section>
           )}
@@ -424,16 +589,29 @@ export const TodayScreen: React.FC = () => {
 
             {dueToday.length > 0 ? (
               <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 overflow-hidden">
-                {dueToday.map((rev) => (
-                  <RevisionItemRow
-                    key={rev.id}
-                    revision={rev}
-                    topic={topicMap.get(rev.topicId)}
-                    subject={subjectMap.get(rev.subjectId)}
-                    onMarkDone={markRevisionDone}
-                    onSnooze={snoozeRevision}
-                  />
-                ))}
+                {dueToday.map((rev) => {
+                  const topic = topicMap.get(rev.topicId);
+                  return (
+                    <RevisionItemRow
+                      key={rev.id}
+                      revision={rev}
+                      topic={topic}
+                      subject={subjectMap.get(rev.subjectId)}
+                      studyStatus={
+                        topic
+                          ? getTopicStudyStatus(topic, state.sessions, todayISO)
+                          : undefined
+                      }
+                      revisionStatus={
+                        topic
+                          ? getTopicRevisionStatus(topic.id, state.revisions, todayISO)
+                          : undefined
+                      }
+                      onMarkDone={markRevisionDone}
+                      onSnooze={snoozeRevision}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 text-center">
@@ -489,17 +667,30 @@ export const TodayScreen: React.FC = () => {
                 Completed Today · {completedToday.length}
               </h2>
               <div className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 overflow-hidden">
-                {completedToday.map((rev) => (
-                  <RevisionItemRow
-                    key={rev.id}
-                    revision={rev}
-                    topic={topicMap.get(rev.topicId)}
-                    subject={subjectMap.get(rev.subjectId)}
-                    onMarkDone={markRevisionDone}
-                    onUndoDone={undoRevisionDone}
-                    onSnooze={snoozeRevision}
-                  />
-                ))}
+                {completedToday.map((rev) => {
+                  const topic = topicMap.get(rev.topicId);
+                  return (
+                    <RevisionItemRow
+                      key={rev.id}
+                      revision={rev}
+                      topic={topic}
+                      subject={subjectMap.get(rev.subjectId)}
+                      studyStatus={
+                        topic
+                          ? getTopicStudyStatus(topic, state.sessions, todayISO)
+                          : undefined
+                      }
+                      revisionStatus={
+                        topic
+                          ? getTopicRevisionStatus(topic.id, state.revisions, todayISO)
+                          : undefined
+                      }
+                      onMarkDone={markRevisionDone}
+                      onUndoDone={undoRevisionDone}
+                      onSnooze={snoozeRevision}
+                    />
+                  );
+                })}
               </div>
             </section>
           )}

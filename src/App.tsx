@@ -7,6 +7,7 @@ import React from 'react';
 import { StudyProvider, useStudy } from './context/StudyContext';
 import { AppShell } from './components/AppShell';
 import { TodayScreen } from './screens/TodayScreen';
+import { StudyPlanScreen } from './screens/StudyPlanScreen';
 import { AddTopicScreen } from './screens/AddTopicScreen';
 import { TimerScreen } from './screens/TimerScreen';
 import { SubjectsScreen } from './screens/SubjectsScreen';
@@ -29,6 +30,8 @@ const ScreenRouter: React.FC = () => {
   switch (activeScreen) {
     case 'today':
       return <TodayScreen />;
+    case 'study-plan':
+      return <StudyPlanScreen />;
     case 'add-topic':
       return <AddTopicScreen />;
     case 'timer':

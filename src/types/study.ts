@@ -6,6 +6,7 @@ export type ThemeMode = 'dark' | 'light';
 
 export type ScreenId =
   | 'today'
+  | 'study-plan'
   | 'add-topic'
   | 'timer'
   | 'subjects'
@@ -26,7 +27,9 @@ export interface Topic {
   id: string;
   subjectId: string;
   name: string;
-  studyDate: string; // YYYY-MM-DD (local calendar date)
+  studyDate: string; // YYYY-MM-DD (local calendar date assigned to this topic)
+  studiedDate?: string; // YYYY-MM-DD when the study session was completed
+  studyOverride?: 'unstudied'; // Set if user manually unmarked a topic that had a logged session
   notes?: string;
   createdAt: string;
 }

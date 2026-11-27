@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarCheck2,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
@@ -34,6 +35,7 @@ interface NavItem {
 
 const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'today', label: 'Today', icon: CalendarCheck2 },
+  { id: 'study-plan', label: 'Study Plan', icon: CalendarDays },
   { id: 'add-topic', label: 'Add Topic', icon: Plus },
   { id: 'timer', label: 'Study Timer', icon: Timer },
   { id: 'subjects', label: 'Subjects', icon: BookOpen },
@@ -44,6 +46,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
 ];
 
 const MORE_MENU_ITEMS: NavItem[] = [
+  { id: 'study-plan', label: 'Study Plan', icon: CalendarDays },
   { id: 'goals', label: 'Goals & Rewards', icon: Trophy },
   { id: 'exams', label: 'Exams & Scores', icon: ClipboardCheck },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -111,7 +114,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     });
   };
 
-  const isMoreActive = ['goals', 'exams', 'analytics', 'settings'].includes(activeScreen);
+  const isMoreActive = ['study-plan', 'goals', 'exams', 'analytics', 'settings'].includes(activeScreen);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col md:flex-row">

@@ -37,6 +37,7 @@ export type TimerPhase = 'idle' | 'running' | 'paused' | 'break_prompt' | 'break
 
 export interface ActiveTimerState {
   mode: SessionType;
+  isExistingTopic?: boolean;
   phase: TimerPhase;
   plannedMinutes: number;
   remainingSeconds: number;
@@ -86,6 +87,7 @@ interface StudyContextValue {
     notes?: string;
   }) => Topic;
   deleteTopic: (topicId: string) => void;
+  markTopicStudied: (topicId: string, studied: boolean, dateISO?: string) => void;
 
   // Revisions
   markRevisionDone: (revisionId: string) => void;
@@ -95,12 +97,14 @@ interface StudyContextValue {
   // Timer actions
   openRevisionSession: (autoStart?: boolean, subjectId?: string) => void;
   openNewTopicSession: () => void;
+  openExistingTopicSession: (preselectedTopicId?: string) => void;
   startNewTopicSession: (input: {
     subjectId: string;
     topicName: string;
     notes?: string;
     logTopicOnComplete: boolean;
   }) => void;
+  startExistingTopicSession: (topicId: string) => void;
   startRevisionTimer: (subjectId?: string) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
@@ -441,6 +445,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             subjectId: completedTimer.subjectId,
             name: completedTimer.topicName.trim(),
             studyDate: todayISO,
+            studiedDate: todayISO,
             notes: completedTimer.topicNotes?.trim() || undefined,
             createdAt: new Date().toISOString(),
           };
@@ -450,6 +455,16 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ...createRevisionSchedulesForTopic(newTopic.id, newTopic.subjectId, todayISO),
             ...prev.revisions,
           ];
+        } else if (
+          completedTimer.mode === 'new_topic' &&
+          completedTimer.topicId
+        ) {
+          // Existing topic study session completed: mark studied without duplicating topic or resetting revisions
+          nextTopics = prev.topics.map((t) =>
+            t.id === completedTimer.topicId
+              ? { ...t, studiedDate: todayISO, studyOverride: undefined }
+              : t
+          );
         }
 
         const newSession: Session = {
@@ -648,6 +663,23 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [setState, showToast]
   );
 
+  const markTopicStudied = useCallback(
+    (topicId: string, studied: boolean, dateISO = getTodayISO()) => {
+      setState((prev) => ({
+        ...prev,
+        topics: prev.topics.map((t) =>
+          t.id === topicId
+            ? studied
+              ? { ...t, studiedDate: dateISO, studyOverride: undefined }
+              : { ...t, studiedDate: undefined, studyOverride: 'unstudied' as const }
+            : t
+        ),
+      }));
+      showToast(studied ? 'Topic marked Studied' : 'Topic marked Not studied');
+    },
+    [setState, showToast]
+  );
+
   // --- Revisions ---
   const markRevisionDone = useCallback(
     (revisionId: string) => {
@@ -772,6 +804,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const mins = state.settings.revisionDurationMinutes;
       setTimer({
         mode: 'revision',
+        isExistingTopic: false,
         phase: autoStart ? 'running' : 'idle',
         plannedMinutes: mins,
         remainingSeconds: mins * 60,
@@ -787,6 +820,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const mins = state.settings.newTopicDurationMinutes;
     setTimer({
       mode: 'new_topic',
+      isExistingTopic: false,
       phase: 'idle',
       plannedMinutes: mins,
       remainingSeconds: mins * 60,
@@ -796,11 +830,35 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveScreen('timer');
   }, [state.settings.newTopicDurationMinutes]);
 
+  const openExistingTopicSession = useCallback(
+    (preselectedTopicId?: string) => {
+      const mins = state.settings.newTopicDurationMinutes;
+      const matchedTopic = preselectedTopicId
+        ? state.topics.find((t) => t.id === preselectedTopicId)
+        : undefined;
+      setTimer({
+        mode: 'new_topic',
+        isExistingTopic: true,
+        phase: 'idle',
+        plannedMinutes: mins,
+        remainingSeconds: mins * 60,
+        endTimeMs: null,
+        topicId: matchedTopic?.id,
+        topicName: matchedTopic?.name,
+        subjectId: matchedTopic?.subjectId,
+        logTopicOnComplete: false,
+      });
+      setActiveScreen('timer');
+    },
+    [state.settings.newTopicDurationMinutes, state.topics]
+  );
+
   const startRevisionTimer = useCallback(
     (subjectId?: string) => {
       const mins = state.settings.revisionDurationMinutes;
       setTimer({
         mode: 'revision',
+        isExistingTopic: false,
         phase: 'running',
         plannedMinutes: mins,
         remainingSeconds: mins * 60,
@@ -821,6 +879,7 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const mins = state.settings.newTopicDurationMinutes;
       setTimer({
         mode: 'new_topic',
+        isExistingTopic: false,
         phase: 'running',
         plannedMinutes: mins,
         remainingSeconds: mins * 60,
@@ -832,6 +891,28 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     },
     [state.settings.newTopicDurationMinutes]
+  );
+
+  const startExistingTopicSession = useCallback(
+    (topicId: string) => {
+      const topic = state.topics.find((t) => t.id === topicId);
+      if (!topic) return;
+      const mins = state.settings.newTopicDurationMinutes;
+      setTimer({
+        mode: 'new_topic',
+        isExistingTopic: true,
+        phase: 'running',
+        plannedMinutes: mins,
+        remainingSeconds: mins * 60,
+        endTimeMs: Date.now() + mins * 60 * 1000,
+        topicId: topic.id,
+        topicName: topic.name,
+        subjectId: topic.subjectId,
+        logTopicOnComplete: false,
+      });
+      setActiveScreen('timer');
+    },
+    [state.topics, state.settings.newTopicDurationMinutes]
   );
 
   const pauseTimer = useCallback(() => {
@@ -1110,12 +1191,15 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     deleteSubject,
     addTopic,
     deleteTopic,
+    markTopicStudied,
     markRevisionDone,
     undoRevisionDone,
     snoozeRevision,
     openRevisionSession,
     openNewTopicSession,
+    openExistingTopicSession,
     startNewTopicSession,
+    startExistingTopicSession,
     startRevisionTimer,
     pauseTimer,
     resumeTimer,

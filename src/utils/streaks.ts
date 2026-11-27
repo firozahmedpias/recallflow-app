@@ -21,10 +21,18 @@ export function calculateStreaks(
   const activityByDate: Record<string, { topics: number; sessions: number; totalMinutes: number }> = {};
 
   for (const topic of topics) {
-    if (!activityByDate[topic.studyDate]) {
-      activityByDate[topic.studyDate] = { topics: 0, sessions: 0, totalMinutes: 0 };
+    if (topic.studyDate <= todayISO) {
+      if (!activityByDate[topic.studyDate]) {
+        activityByDate[topic.studyDate] = { topics: 0, sessions: 0, totalMinutes: 0 };
+      }
+      activityByDate[topic.studyDate].topics += 1;
     }
-    activityByDate[topic.studyDate].topics += 1;
+    if (topic.studiedDate && topic.studiedDate <= todayISO && topic.studiedDate !== topic.studyDate) {
+      if (!activityByDate[topic.studiedDate]) {
+        activityByDate[topic.studiedDate] = { topics: 0, sessions: 0, totalMinutes: 0 };
+      }
+      activityByDate[topic.studiedDate].topics += 1;
+    }
   }
 
   for (const session of sessions) {

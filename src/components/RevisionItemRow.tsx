@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import { CalendarClock, Check, RotateCcw } from 'lucide-react';
 import { RevisionSchedule, Subject, Topic } from '../types/study';
 import { addDaysISO, diffDaysISO, formatDisplayDate, getTodayISO } from '../utils/dates';
+import { TopicRevisionStatus, TopicStudyStatus } from '../utils/studyStatus';
+import { RevisionStatusBadge, StudyStatusBadge } from './TopicStatusBadges';
 
 interface RevisionItemRowProps {
   revision: RevisionSchedule;
   topic?: Topic;
   subject?: Subject;
+  studyStatus?: TopicStudyStatus;
+  revisionStatus?: TopicRevisionStatus;
   doneLabel?: string;
   nextRevisionText?: string;
   onMarkDone: (id: string) => void;
@@ -18,6 +22,8 @@ export const RevisionItemRow: React.FC<RevisionItemRowProps> = ({
   revision,
   topic,
   subject,
+  studyStatus,
+  revisionStatus,
   doneLabel = 'Done',
   nextRevisionText,
   onMarkDone,
@@ -76,6 +82,13 @@ export const RevisionItemRow: React.FC<RevisionItemRowProps> = ({
                 <span>Due {formatDisplayDate(revision.dueDate)}</span>
               )}
             </div>
+
+            {(studyStatus || revisionStatus) && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {studyStatus && <StudyStatusBadge status={studyStatus} showDetail />}
+                {revisionStatus && <RevisionStatusBadge status={revisionStatus} />}
+              </div>
+            )}
 
             {topic.notes && !isDone && (
               <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 line-clamp-2">

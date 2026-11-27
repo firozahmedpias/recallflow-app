@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -7,13 +8,16 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Play,
   Plus,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
 import { useStudy } from '../context/StudyContext';
 import { formatDisplayDate, getTodayISO } from '../utils/dates';
+import { getTopicRevisionStatus, getTopicStudyStatus } from '../utils/studyStatus';
 import {
   buildTopicExportRows,
   downloadTopicsCSV,
@@ -21,9 +25,17 @@ import {
   slugifyFilename,
 } from '../utils/exportReports';
 import { SubjectManager } from '../components/SubjectManager';
+import { RevisionStatusBadge, StudyStatusBadge } from '../components/TopicStatusBadges';
 
 export const SubjectsScreen: React.FC = () => {
-  const { state, deleteTopic, setActiveScreen } = useStudy();
+  const {
+    state,
+    deleteTopic,
+    markTopicStudied,
+    startExistingTopicSession,
+    setActiveScreen,
+  } = useStudy();
+  const todayISO = getTodayISO();
   const [search, setSearch] = useState('');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [showManager, setShowManager] = useState(() => state.subjects.length === 0);
@@ -173,7 +185,8 @@ export const SubjectsScreen: React.FC = () => {
       state.subjects,
       state.topics,
       state.revisions,
-      state.exams
+      state.exams,
+      state.sessions
     );
     const today = getTodayISO();
     if (format === 'csv') {
@@ -198,6 +211,7 @@ export const SubjectsScreen: React.FC = () => {
       state.topics,
       state.revisions,
       state.exams,
+      state.sessions,
       subjectId
     );
     const slug = slugifyFilename(subjectName);
@@ -541,6 +555,18 @@ export const SubjectsScreen: React.FC = () => {
                               const doneCount = revs.filter((r) => r.status === 'done').length;
                               const isFullyRevised =
                                 revs.length > 0 && doneCount === revs.length;
+                              const studyStatus = getTopicStudyStatus(
+                                topic,
+                                state.sessions,
+                                todayISO
+                              );
+                              const revisionStatus = getTopicRevisionStatus(
+                                topic.id,
+                                state.revisions,
+                                todayISO
+                              );
+                              const isStudied = studyStatus.kind === 'studied';
+
                               const topicExams = (examsByTopic.get(topic.id) || []).sort((a, b) =>
                                 b.date.localeCompare(a.date)
                               );
@@ -571,17 +597,7 @@ export const SubjectsScreen: React.FC = () => {
                                     </div>
 
                                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                                      <span>Studied {formatDisplayDate(topic.studyDate)}</span>
-                                      <span aria-hidden="true">·</span>
-                                      <span
-                                        className={
-                                          isFullyRevised
-                                            ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                            : ''
-                                        }
-                                      >
-                                        {doneCount}/{revs.length} revisions done
-                                      </span>
+                                      <span>Assigned {formatDisplayDate(topic.studyDate)}</span>
                                       {latestExam && latestExamPct !== null && (
                                         <>
                                           <span aria-hidden="true">·</span>
@@ -591,6 +607,12 @@ export const SubjectsScreen: React.FC = () => {
                                           </span>
                                         </>
                                       )}
+                                    </div>
+
+                                    {/* Separate Study Status + Revision Status Badges */}
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                      <StudyStatusBadge status={studyStatus} showDetail />
+                                      <RevisionStatusBadge status={revisionStatus} />
                                     </div>
 
                                     {topic.notes && (
@@ -620,14 +642,53 @@ export const SubjectsScreen: React.FC = () => {
                                     )}
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteTopic(topic.id)}
-                                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
-                                    aria-label={`Delete topic ${topic.name}`}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => startExistingTopicSession(topic.id)}
+                                      className="min-h-[40px] min-w-[40px] px-2.5 flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                      aria-label={`Study ${topic.name} for ${state.settings.newTopicDurationMinutes} minutes`}
+                                    >
+                                      <Play className="w-3.5 h-3.5 text-indigo-500 fill-current" />
+                                      <span className="hidden sm:inline">
+                                        {state.settings.newTopicDurationMinutes}m
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        markTopicStudied(
+                                          topic.id,
+                                          !isStudied,
+                                          topic.studyDate <= todayISO ? topic.studyDate : todayISO
+                                        )
+                                      }
+                                      className={`min-h-[40px] min-w-[40px] px-2.5 flex items-center justify-center gap-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                                        isStudied
+                                          ? 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                      }`}
+                                      aria-label={
+                                        isStudied
+                                          ? `Unmark ${topic.name} as studied`
+                                          : `Mark ${topic.name} as studied`
+                                      }
+                                    >
+                                      {isStudied ? (
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <Check className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteTopic(topic.id)}
+                                      className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                      aria-label={`Delete topic ${topic.name}`}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </div>
                               );
                             })
